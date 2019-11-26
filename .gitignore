@@ -6,6 +6,9 @@ __pycache__/
 # C extensions
 *.so
 
+# Vivado
+*.jou
+
 # Distribution / packaging
 .Python
 build/
@@ -102,3 +105,6 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+#PyCharm
+.idea/
