@@ -1,3 +1,5 @@
+# This is a dummy TCL script, which emulates the behaviour of the XSCT_server.
+
 # Based on https://wiki.tcl-lang.org/page/The+simplest+possible+socket+demonstration
 
 set run 1
@@ -23,4 +25,3 @@ proc accept {chan addr port} {          ;# Make a proc to accept connections
 }                                        ;#
 socket -server accept 4567               ;# Create a server socket
 vwait run
-

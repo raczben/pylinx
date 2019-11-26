@@ -237,24 +237,28 @@ class Vivado():
     using do() method. This is a quasi state-less class
     '''
 
-    def __init__(self, executable, args=['-mode', 'tcl'], name='Vivado_01', prompt=default_vivado_prompt):
+    def __init__(self, executable, args=['-mode', 'tcl'], name='Vivado_01', prompt=default_vivado_prompt, timeout=10, encoding="utf-8"):
         self.childProc = None
         self.name = name
         self.prompt = prompt
+        self.timeout = timeout
+        self.encoding = encoding
         
         if executable is not None: # None is fake run
             self.childProc = expect.spawn(executable, args)
         
         
-    def waitStartup(self, prompt=None):
+    def waitStartup(self, prompt=None, timeout=None):
         if prompt is None:
             prompt = self.prompt
-        self.childProc.expect(prompt)
+        if timeout is None:
+            timeout = self.timeout
+        self.childProc.expect(prompt, timeout=timeout)
         # print the texts
         logger.debug(self.childProc.before + self.childProc.match.group(0))
         
         
-    def do(self, cmd, prompt=None, wait_prompt=True, puts=False, errmsgs=[], encoding="utf-8", native_answer=False):
+    def do(self, cmd, prompt=None, timeout=None, wait_prompt=True, puts=False, errmsgs=[], encoding="utf-8", native_answer=False):
         ''' do a simple command in Vivado console
         '''
         if isinstance(cmd, str):
@@ -265,109 +269,82 @@ class Vivado():
         self.childProc.sendline(cmd)
         if prompt is None:
             prompt = self.prompt
+        if timeout is None:
+            timeout = self.timeout
+        if encoding is None:
+            encoding = self.encoding
         if wait_prompt:
-            self.childProc.expect(prompt)
+            self.childProc.expect(prompt, timeout=timeout)
             logger.debug(str(cmd) + str(self.childProc.before) + str(self.childProc.match.group(0)))
+            ans = self.childProc.before
             for em in errmsgs:
-                if em.search(self.childProc.before):
-                    logger.error('during running command: ' + repr(cmd) + repr(self.childProc.before))
-                    raise PyXilException('during running command: ' + repr(cmd) + repr(self.childProc.before))
+                if isinstance(em, (bytes, bytearray)):
+                    em = re.compile(em)
+                if em.search(ans):
+                    logger.error('during running command: ' + repr(cmd) + repr(ans))
+                    raise PyXilException('during running command: ' + repr(cmd) + repr(ans))
             if puts:
                 print(cmd, end='')
-                print(self.childProc.before, end='')
+                print(ans, end='')
                 print(self.childProc.match.group(0), end='')
                 
-            ans = self.childProc.before.decode(encoding)
             if native_answer:
                 return ans
             else:
+                ans_str = ans.decode(encoding)
                 # remove first line, which is always empty
-                ans = os.linesep.join(ans.splitlines()[1:-1])
-                return ans
+                ret = os.linesep.join(ans_str.splitlines()[1:-1])
+                return ret
                 
         return None
         
-    def get_var(self, varname):
+    def get_var(self, varname, **kwargs):
         no_var_msg = 'can\'t read "{}": no such variable'.format(varname)
         # print(no_var_msg)
         errmsgs = [re.compile(no_var_msg.encode())]
         command = 'puts ${}'.format(varname)
-        ans = self.do(command, errmsgs=errmsgs)
+        ans = self.do(command, errmsgs=errmsgs, **kwargs)
         
         return ans
 
-    def set_var(self, varname, value):
+    def set_var(self, varname, value, **kwargs):
         command = 'set {} {}'.format(varname, value)
         
-        ans = self.do(command)
+        ans = self.do(command, **kwargs)
         
         return ans
     
-    def get_property(self, propName, objectName, prompt=None, puts=False):
+    def get_property(self, propName, objectName, prompt=None, puts=False, **kwargs):
         ''' does a get_property command in vivado terminal. 
         
         It fetches the given property and returns it.
         '''
         cmd = 'get_property {} {}'.format(propName, objectName)
-        self.do(cmd, prompt=prompt, puts=puts)
+        self.do(cmd, prompt=prompt, puts=puts, **kwargs)
         val = [x for x in self.childProc.before.splitlines() if x ]
         return val[0]
     
     
-    def set_property(self, propName, value, objectName, prompt=None, puts=False):
+    def set_property(self, propName, value, objectName, prompt=None, puts=False, **kwargs):
         ''' Sets a property.
         '''
         cmd = 'set_property {} {} {}'.format(propName, value, objectName)
-        self.do(cmd, prompt=prompt, puts=puts)
+        self.do(cmd, prompt=prompt, puts=puts, **kwargs)
+        
+    def pid(self):
+        return self.childProc.pid
         
         
-    def exit(self):
+    def exit(self, force=False, **kwargs):
         if self.childProc is None:
             return None
         if self.childProc.terminated:
             logger.warning('This process has been terminated.')
             return None
         else:
-            self.do('exit', wait_prompt=False)
-            return self.childProc.wait()
-        
-
-if __name__ == '__main__':
-    """A small example of usage.
-    """
-    test_xsct = True
-    test_vivado = False
-    
-    
-    if test_xsct:
-        # win_xsct_executable = r'C:\Xilinx\SDK\2017.4\bin\xsct.bat'
-        # xsct_server = XsctServer(win_xsct_executable, port=PORT, verbose=False)
-        xsct = Xsct('localhost', PORT)
-        
-        print("xsct's pid: {}".format(xsct.do('pid')))
-        print(xsct.do('set a 5'))
-        print(xsct.do('set b 4'))
-        print("5+4={}".format(xsct.do('expr $a + $b')))
-
-        xsct.send('exit')
-        xsct.close()
-        xsct_server.stop_server()
-    if test_vivado:
-        # Path of Vivado executable:
-        if platform.system() == 'Windows':
-            vivadoPath = 'C:/Xilinx/Vivado/2017.4/bin/vivado.bat'
-        else: # Linux
-            vivadoPath = 'vivado'
-            vivadoPath = '/home/beton/Xilinx/Vivado/2017.4/bin/vivado'
-            vivadoPath = 'tclsh'
-    
-        vivado = Vivado(vivadoPath, prompt='%')
-        vivado.waitStartup()
-        print(vivado.do(b'pid'))
-        print(vivado.set_var('a', '5'))
-        print(vivado.set_var('b', '[expr $a + 4]'))
-        print("5+4={}".format(vivado.get_var('b')))
-        print("5+4={}".format(vivado.get_var('c')))
-        vivado.exit()
-        
-        
+            if force:
+                return self.childProc.terminate()
+                return self.childProc.wait()
+            else:
+                self.do('exit', wait_prompt=False, **kwargs)
+                return self.childProc.wait()
