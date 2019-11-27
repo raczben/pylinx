@@ -1,7 +1,12 @@
 dist: xenial   # required for Python >= 3.7
 language: python
 python:
+  - "3.5"
+    env: TOXENV=py35
+  - "3.6"
+    env: TOXENV=py36
   - "3.7"
+    env: TOXENV=py37
 
 # command to install dependencies
 install:
@@ -9,7 +14,7 @@ install:
   
 # command to run tests
 script:
-  - tox
+  - tox 
   
 # Push the results back to codecov
 after_success:
