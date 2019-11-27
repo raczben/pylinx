@@ -343,7 +343,6 @@ class Vivado():
         else:
             if force:
                 return self.childProc.terminate()
-                return self.childProc.wait()
             else:
                 self.do('exit', wait_prompt=False, **kwargs)
                 return self.childProc.wait()

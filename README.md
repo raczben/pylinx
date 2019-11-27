@@ -1,6 +1,9 @@
 # pylinx
 Python utils for Xilinx's tools
 
+[![Build Status](https://travis-ci.org/raczben/pylinx.svg?branch=master)](https://travis-ci.org/raczben/pylinx)
+[![codecov](https://codecov.io/gh/raczben/pylinx/branch/master/graph/badge.svg)](https://codecov.io/gh/raczben/pylinx)
+
 This package based on the following requiremets:
  - [Running-SDK-project-in-other-software][1]
  - [Error during control Xilinx XSCT with pexpect][2]
