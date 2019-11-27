@@ -1,12 +1,15 @@
 dist: xenial   # required for Python >= 3.7
 language: python
-python:
-  - "3.5"
-    env: TOXENV=py35
-  - "3.6"
-    env: TOXENV=py36
-  - "3.7"
-    env: TOXENV=py37
+
+# Based on https://stackoverflow.com/a/46103989/2506522
+matrix:
+  include:
+    - python: 3.5
+      env: TOXENV=py35
+    - python: 3.6
+      env: TOXENV=py36
+    - python: 3.7
+      env: TOXENV=py37
 
 # command to install dependencies
 install:
