@@ -11,6 +11,11 @@ environment:
   testpypipw:
     secure: CcyBI8e/2LdIT2aYIytTAmiQ55eepF9WEBBRvAaQJzxneyl7tbhmuFMB6ZleqI2giXw4wu/o8H6j2FN5QYx2jh1+hXxA07OCPmLLs0XMej4Gmq+U4kma+oJ6UrcA8woAl+V8BiPN4FpHsP++AZRiJPu4mm1pTET5NRM/ZTz3N+u7/DvzifVZ0QHX6mhxQJFu2uPAe0lwOiz0kiG3Y7p/zqgWryMwPm4sArfpVDLIb8tdBseX1lLIXOPDDsV0KUg2fd7NR2a8UBqYWPGNDV7xcA==
 
+  matrix:
+  # - TOXENV: py35
+  - TOXENV: py36
+  # - TOXENV: py37
+
 image:
   - Ubuntu
   
