@@ -16,11 +16,8 @@ image:
   
 build: off
 
-install:
-  - pip install .[test]
-
 test_script:
-  - pytest --cov=pylinx
+  - tox
 
 after_test:
   # Upload code coverage results.
