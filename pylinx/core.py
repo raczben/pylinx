@@ -88,6 +88,18 @@ class XsctServer:
             raise ValueError("xsct_executable and port must be non None.")
         start_server_command = 'xsdbserver start -port {}'.format(port)
         start_command = '{} -eval "{}" -interactive'.format(xsct_executable, start_server_command)
+        self._launch_child(start_command)
+
+    def _start_dummy_server(self):
+        """Starts a dummy server, just for test purposes.
+        
+        :return: None
+        """
+        dummy_executable = os.path.abspath(os.path.join(__here__, 'dummy_xsct.tcl'))
+        start_command = ['tclsh', dummy_executable]
+        self._launch_child(start_command)
+        
+    def _launch_child(self, start_command, verbose=False):
         logger.info('Starting xsct server: %s', start_command)
         if verbose:
             stdout = None
@@ -95,18 +107,7 @@ class XsctServer:
             stdout = open(os.devnull, 'w')
         self._xsct_server = subprocess.Popen(start_command, stdout=stdout)
         logger.info('xsct started with PID: %d', self._xsct_server.pid)
-
-    def _start_dummy_server(self):
-        """Starts a dummy server, just for test purposes.
         
-        :return: None
-        """
-        dummy_executable = os.path.abspath(os.path.join(__here__, '../tests', 'dummy_xsct.tcl'))
-        start_command = ['tclsh', dummy_executable]
-        logger.info('Starting xsct server: %s', ' '.join(start_command))
-        stdout = None
-        self._xsct_server = subprocess.Popen(start_command, stdout=stdout)
-        logger.info('xsct started with PID: %d', self._xsct_server.pid)
 
     def stop_server(self, wait=True):
         """Kills the server.
