@@ -47,7 +47,7 @@ logger.addHandler(sh)
 
 # xsct_line_end is the line endings in the XSCT console. It doesn't depend on the platform. It is
 # always Windows-style \\r\\n.
-xsct_line_end: str = '\r\n'
+xsct_line_end = '\r\n'
 
 # The default host and port.
 HOST = '127.0.0.1'  # Standard loop-back interface address (localhost)

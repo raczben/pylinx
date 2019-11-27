@@ -1,6 +1,10 @@
 dist: xenial   # required for Python >= 3.7
 language: python
 
+# command to install dependencies
+install:
+  - pip install tox
+  
 # command to run tests
 script:
   - tox
