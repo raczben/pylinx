@@ -320,9 +320,7 @@ class Vivado():
         It fetches the given property and returns it.
         '''
         cmd = 'get_property {} {}'.format(propName, objectName)
-        self.do(cmd, prompt=prompt, puts=puts, **kwargs)
-        val = [x for x in self.childProc.before.splitlines() if x ]
-        return val[0]
+        return self.do(cmd, prompt=prompt, puts=puts, **kwargs)
     
     
     def set_property(self, propName, value, objectName, prompt=None, puts=False, **kwargs):

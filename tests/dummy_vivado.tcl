@@ -1,22 +1,16 @@
-# This is a dummy TCL script, which emulates the behaviour of the XSCT_server.
+# This is a dummy TCL script, which emulates the behaviour of the Vivado.
 
-# Based on https://wiki.tcl-lang.org/page/The+simplest+possible+socket+demonstration
+global objects
 
-set run 1
-
-proc do {cmd} {          ;# Do a command
-    puts [eval $cmd]
-    if {$cmd == "exit"} {
-        set run 0
-        break
-    }
+proc get_property {propName objectName} {
+    eval "global $objectName"
+    set varname "${objectName}($propName)"
+    set ret [subst $$varname]
+    puts $ret
 }
 
-proc main { } {
-    while {$run} {
-        gets stdin cmd
-        do $cmd
-    }
+proc set_property {propName value objectName} {
+    eval "global $objectName"
+    eval "set ${objectName}($propName) $value"
 }
 
-main
