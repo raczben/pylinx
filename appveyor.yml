@@ -22,6 +22,8 @@ image:
 build: off
 
 install:
+  - python -m pip freeze
+  - python3 -m pip freeze
   - pip install tox
 
 test_script:
