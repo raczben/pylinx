@@ -14,16 +14,17 @@ import pylinx
 # The directory of this script file.
 __here__ = os.path.dirname(os.path.realpath(__file__))
 
-linux_vivado_path = "~/Xilinx/Vivado/2017.4/bin/vivado"
-linux_vivado_path = os.path.expanduser(linux_vivado_path)
+
+if "XILINX_VIVADO" in os.environ:
+    linux_vivado_path = os.path.join(os.environ['XILINX_VIVADO'], 'bin', 'vivado')
+else:
+    linux_vivado_path = 'Cannot find out Vivado executable.'
 
 def valid_platform():
     '''Vivado is not installed on Travis.
     '''
     if "TRAVIS" in os.environ and os.environ["TRAVIS"] == "true":
         return False
-        
-    print(os.environ)
     return True
 
 
@@ -46,8 +47,8 @@ def test_xsct_dummy_vivado_exit():
 
 
 def test_vivado_do():
-    # if not valid_platform():
-    pytest.skip("unsupported platform")
+    if not valid_platform():
+        pytest.skip("unsupported platform")
         
     vivado = pylinx.Vivado(linux_vivado_path)
 
