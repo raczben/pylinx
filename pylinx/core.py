@@ -244,9 +244,9 @@ class Vivado():
         self.prompt = prompt
         self.timeout = timeout
         self.encoding = encoding
-        self.last_cmd = ''
-        self.last_before = ''
-        self.last_prompt = ''
+        self.last_cmds = []
+        self.last_befores = []
+        self.last_prompts = []
         
         if executable is not None: # None is fake run
             self.childProc = expect.spawn(executable, args)
@@ -274,30 +274,32 @@ class Vivado():
         if wait_prompt:
             self.childProc.expect(prompt, timeout=timeout)
             logger.debug(str(cmd) + str(self.childProc.before) + str(self.childProc.match.group(0)))
-            self.last_cmd = cmd
-            self.last_before = self.childProc.before.decode(encoding)
-            self.last_prompt = self.childProc.match.group(0).decode(encoding)
+            self.last_cmds.append(cmd)
+            before = self.childProc.before.decode(encoding)
+            prompt = self.childProc.match.group(0).decode(encoding)
+            self.last_befores.append(before)
+            self.last_prompts.append(prompt)
             for em in errmsgs:
                 if isinstance(em, (str)):
                     em = re.compile(em)
-                if em.search(self.last_before):
-                    logger.error('during running command: ' + repr(cmd) + self.last_before)
-                    raise PyXilException('during running command: ' + repr(cmd) + self.last_before)
+                if em.search(before):
+                    logger.error('during running command: {}, before: {}'.format(cmd, before))
+                    raise PyXilException('during running command: {}, before: {}'.format(cmd, before))
                 
             if native_answer:
-                return self.last_before
+                return before
             else:
                 # remove first line, which is always empty
-                ret = os.linesep.join(self.last_before.splitlines()[1:-1])
+                ret = os.linesep.join(before.splitlines()[1:-1])
                 return ret
                 
         return None
         
     def interact(self, cmd=None, **kwargs):
-        self.do(cmd, **kwargs)
-        before_to_print = os.linesep.join(self.last_before.split(xsct_line_end)[1:])
+        before = self.do(cmd, native_answer=True, **kwargs)
+        before_to_print = os.linesep.join(before.split(xsct_line_end)[1:])
         print(before_to_print, end='')
-        print(self.last_prompt, end='')
+        print(self.last_prompts[-1], end='')
         
     def get_var(self, varname, **kwargs):
         no_var_msg = 'can\'t read "{}": no such variable'.format(varname)
