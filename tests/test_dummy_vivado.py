@@ -39,7 +39,7 @@ def test_vivado_do():
         vivado.do('set b 4')
         assert int(vivado.do('expr $a + $b')) == 9
         with pytest.raises(pylinx.PyXilException):
-            vivado.do('expr $a + $c', errmsgs=[b'can\'t read "c": no such variable'])
+            vivado.do('expr $a + $c', errmsgs=['can\'t read "c": no such variable'])
             
         assert vivado.do('puts hello', prompt='% ') == 'hello'
         assert vivado.do('puts world', timeout=1) == 'world'

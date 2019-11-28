@@ -244,30 +244,27 @@ class Vivado():
         self.prompt = prompt
         self.timeout = timeout
         self.encoding = encoding
+        self.last_cmd = ''
+        self.last_before = ''
+        self.last_prompt = ''
         
         if executable is not None: # None is fake run
             self.childProc = expect.spawn(executable, args)
         
         
-    def waitStartup(self, prompt=None, timeout=None):
-        if prompt is None:
-            prompt = self.prompt
-        if timeout is None:
-            timeout = self.timeout
-        self.childProc.expect(prompt, timeout=timeout)
-        # print the texts
-        logger.debug(self.childProc.before + self.childProc.match.group(0))
+    def waitStartup(self, **kwargs):
+        self.do(cmd=None, **kwargs)
         
         
     def do(self, cmd, prompt=None, timeout=None, wait_prompt=True, puts=False, errmsgs=[], encoding="utf-8", native_answer=False):
         ''' do a simple command in Vivado console
         '''
-        if isinstance(cmd, str):
-            cmd = cmd.encode()
         if self.childProc.terminated:
             logger.error('The process has been terminated. Sending command is not possible.')
             raise PyXilException('The process has been terminated. Sending command is not possible.')
-        self.childProc.sendline(cmd)
+            
+        if cmd is not None:
+            self.childProc.sendline(cmd.encode())
         if prompt is None:
             prompt = self.prompt
         if timeout is None:
@@ -277,32 +274,33 @@ class Vivado():
         if wait_prompt:
             self.childProc.expect(prompt, timeout=timeout)
             logger.debug(str(cmd) + str(self.childProc.before) + str(self.childProc.match.group(0)))
-            ans = self.childProc.before
+            self.last_cmd = cmd
+            self.last_before = self.childProc.before.decode(encoding)
+            self.last_prompt = self.childProc.match.group(0).decode(encoding)
             for em in errmsgs:
-                if isinstance(em, (bytes, bytearray)):
+                if isinstance(em, (str)):
                     em = re.compile(em)
-                if em.search(ans):
-                    logger.error('during running command: ' + repr(cmd) + repr(ans))
-                    raise PyXilException('during running command: ' + repr(cmd) + repr(ans))
+                if em.search(self.last_before):
+                    logger.error('during running command: ' + repr(cmd) + self.last_before)
+                    raise PyXilException('during running command: ' + repr(cmd) + self.last_before)
             if puts:
-                print(cmd, end='')
-                print(ans, end='')
-                print(self.childProc.match.group(0), end='')
+                print(self.last_cmd, end='')
+                print(self.last_before, end='')
+                print(self.last_prompt, end='')
                 
             if native_answer:
-                return ans
+                return self.last_before
             else:
-                ans_str = ans.decode(encoding)
                 # remove first line, which is always empty
-                ret = os.linesep.join(ans_str.splitlines()[1:-1])
+                ret = os.linesep.join(self.last_before.splitlines()[1:-1])
                 return ret
                 
         return None
         
+        
     def get_var(self, varname, **kwargs):
         no_var_msg = 'can\'t read "{}": no such variable'.format(varname)
-        # print(no_var_msg)
-        errmsgs = [re.compile(no_var_msg.encode())]
+        errmsgs = [re.compile(no_var_msg)]
         command = 'puts ${}'.format(varname)
         ans = self.do(command, errmsgs=errmsgs, **kwargs)
         
@@ -315,20 +313,20 @@ class Vivado():
         
         return ans
     
-    def get_property(self, propName, objectName, prompt=None, puts=False, **kwargs):
+    def get_property(self, propName, objectName, **kwargs):
         ''' does a get_property command in vivado terminal. 
         
         It fetches the given property and returns it.
         '''
         cmd = 'get_property {} {}'.format(propName, objectName)
-        return self.do(cmd, prompt=prompt, puts=puts, **kwargs)
+        return self.do(cmd, **kwargs)
     
     
-    def set_property(self, propName, value, objectName, prompt=None, puts=False, **kwargs):
+    def set_property(self, propName, value, objectName, **kwargs):
         ''' Sets a property.
         '''
         cmd = 'set_property {} {} {}'.format(propName, value, objectName)
-        self.do(cmd, prompt=prompt, puts=puts, **kwargs)
+        self.do(cmd, **kwargs)
         
     def pid(self):
         return self.childProc.pid
