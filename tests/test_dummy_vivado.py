@@ -5,7 +5,6 @@
 #
 import pytest
 import time
-from subprocess import Popen
 import os
 
 # import DUT
@@ -15,7 +14,7 @@ import pylinx
 __here__ = os.path.dirname(os.path.realpath(__file__))
 
 
-def test_xsct_dummy_vivado_init():
+def test_dummy_vivado_init():
     vivado = pylinx.Vivado(executable='tclsh', args=[], prompt='% ')
     vivado.exit(force=True)
     vivado.exit()

@@ -294,8 +294,9 @@ class Vivado():
                 return before
             else:
                 # remove first line, which is always empty
-                ret = os.linesep.join(before.splitlines()[1:-1])
-                return ret
+                ret = os.linesep.join(before.split(xsct_line_end)[1:-1])
+                # print(repr(before.split(xsct_line_end)))
+                return ret.rstrip()
                 
         return None
         
@@ -366,17 +367,18 @@ class VivadoHWServer(Vivado):
     allDevices = {} # type: Dict[str, list]
 
     
-    def __init__(self, hw_server_url='localhost:3121', waitStartup=True, full_init=True, **kwargs):
+    def __init__(self, executable, hw_server_url='localhost:3121', waitStartup=True, full_init=True, **kwargs):
         self.hw_server_url = hw_server_url
         self.sio = None
         self.sioLink = None
-        super(VivadoHWServer, self).__init__(waitStartup, **kwargs)
+        super(VivadoHWServer, self).__init__(executable, waitStartup=waitStartup, **kwargs)
         
         if full_init:
             assert waitStartup
-        
-            self.do('source hw_server.tcl')
-            vivadoRX.do('init ' + rx_hw_server_url)
+            
+            hw_server_tcl = os.path.join(__here__, 'hw_server.tcl')
+            self.do('source ' + hw_server_tcl)
+            self.do('init ' + hw_server_url)
             
           
     def fetchDevices(self, force = False):

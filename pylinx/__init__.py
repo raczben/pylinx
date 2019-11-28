@@ -3,3 +3,4 @@ from .core import Xsct
 from .core import Vivado
 from .core import XsctServer
 from .core import PylinxException
+from .core import VivadoHWServer
