@@ -17,7 +17,6 @@ __here__ = os.path.dirname(os.path.realpath(__file__))
 
 def test_xsct_dummy_vivado_init():
     vivado = pylinx.Vivado(executable='tclsh', args=[], prompt='% ')
-    vivado.waitStartup()
     vivado.exit(force=True)
     vivado.exit()
     
@@ -31,14 +30,13 @@ def test_xsct_dummy_vivado_exit():
 
 def test_vivado_do():
     vivado = pylinx.Vivado(executable='tclsh', args=[], prompt='% ')
-    vivado.waitStartup()
 
     try:
         assert int(vivado.do('pid')) == vivado.pid()
         vivado.do('set a 5')
         vivado.do('set b 4')
         assert int(vivado.do('expr $a + $b')) == 9
-        with pytest.raises(pylinx.PyXilException):
+        with pytest.raises(pylinx.PylinxException):
             vivado.do('expr $a + $c', errmsgs=['can\'t read "c": no such variable'])
             
         assert vivado.do('puts hello', prompt='% ') == 'hello'
@@ -48,7 +46,6 @@ def test_vivado_do():
 
 def test_vivado_vars():
     vivado = pylinx.Vivado(executable='tclsh', args=[], prompt='% ')
-    vivado.waitStartup()
 
     try:
         vivado.set_var('foo', 42)
@@ -59,7 +56,7 @@ def test_vivado_vars():
         vivado.set_var('res', '[expr $foo+$bar]')
         assert vivado.get_var('res') == '100'
         
-        with pytest.raises(pylinx.PyXilException):
+        with pytest.raises(pylinx.PylinxException):
             vivado.get_var('c')
             
         assert vivado.set_var('hello', 'world', prompt='% ', timeout=1)
@@ -70,7 +67,6 @@ def test_vivado_vars():
 
 def test_vivado_properties():
     vivado = pylinx.Vivado(executable='tclsh', args=[], prompt='% ')
-    vivado.waitStartup()
 
     try:
         dummy_prop = os.path.abspath(os.path.join(__here__, 'dummy_vivado.tcl'))
@@ -81,3 +77,16 @@ def test_vivado_properties():
     finally:
         assert vivado.exit() == 0
 
+
+
+def test_vivado_interact():
+    vivado = pylinx.Vivado(executable='tclsh', args=[], prompt='% ')
+
+    try:
+        vivado.interact('set a 5')
+        vivado.interact('set b 4')
+        assert vivado.get_var('a') == '5'
+        assert vivado.get_var('b') == '4'
+        
+    finally:
+        assert vivado.exit() == 0

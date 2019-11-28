@@ -54,7 +54,7 @@ HOST = '127.0.0.1'  # Standard loop-back interface address (localhost)
 PORT = 4567
 
 
-class PyXilException(Exception):
+class PylinxException(Exception):
     """The exception for this project.
     """
     pass
@@ -227,8 +227,8 @@ class Xsct:
         if ans.startswith('okay'):
             return ans[5:]
         if ans.startswith('error'):
-            raise PyXilException(ans[6:])
-        raise PyXilException('Illegal start-string in protocol. Answer is: ' + ans)
+            raise PylinxException(ans[6:])
+        raise PylinxException('Illegal start-string in protocol. Answer is: ' + ans)
 
 
 default_vivado_prompt = 'Vivado% '
@@ -238,7 +238,8 @@ class Vivado():
     using do() method. This is a quasi state-less class
     '''
 
-    def __init__(self, executable, args=['-mode', 'tcl'], name='Vivado_01', prompt=default_vivado_prompt, timeout=10, encoding="utf-8"):
+    def __init__(self, executable, args=['-mode', 'tcl'], name='Vivado_01',
+        prompt=default_vivado_prompt, timeout=10, encoding="utf-8", waitStartup=True):
         self.childProc = None
         self.name = name
         self.prompt = prompt
@@ -251,6 +252,9 @@ class Vivado():
         if executable is not None: # None is fake run
             self.childProc = expect.spawn(executable, args)
         
+        if waitStartup:
+            self.waitStartup()
+        
         
     def waitStartup(self, **kwargs):
         self.do(cmd=None, **kwargs)
@@ -261,7 +265,7 @@ class Vivado():
         '''
         if self.childProc.terminated:
             logger.error('The process has been terminated. Sending command is not possible.')
-            raise PyXilException('The process has been terminated. Sending command is not possible.')
+            raise PylinxException('The process has been terminated. Sending command is not possible.')
             
         if cmd is not None:
             self.childProc.sendline(cmd.encode())
@@ -284,7 +288,7 @@ class Vivado():
                     em = re.compile(em)
                 if em.search(before):
                     logger.error('during running command: {}, before: {}'.format(cmd, before))
-                    raise PyXilException('during running command: {}, before: {}'.format(cmd, before))
+                    raise PylinxException('during running command: {}, before: {}'.format(cmd, before))
                 
             if native_answer:
                 return before
@@ -296,8 +300,9 @@ class Vivado():
         return None
         
     def interact(self, cmd=None, **kwargs):
-        before = self.do(cmd, native_answer=True, **kwargs)
-        before_to_print = os.linesep.join(before.split(xsct_line_end)[1:])
+        if cmd is not None:
+            self.do(cmd, **kwargs)
+        before_to_print = os.linesep.join(self.last_befores[-1].split(xsct_line_end)[1:])
         print(before_to_print, end='')
         print(self.last_prompts[-1], end='')
         
@@ -347,3 +352,109 @@ class Vivado():
             else:
                 self.do('exit', wait_prompt=False, **kwargs)
                 return self.childProc.wait()
+
+
+class VivadoHWServer(Vivado):
+    '''VivadoHWServer adds hw_server dependent handlers for the Vivado class.
+    '''
+
+    '''allDevices is a static variable. Its stores all the devices for all hardware server. The indexes
+    are the urls and the values are lists of the available hardware devices. The default behaviour
+    is the following: One key is "localhost:3121" (which is the default hw server) and this key
+    indexes a list with all local devices (which are normally includes two devices).
+    See get_devices() and fetchDevices for more details.'''
+    allDevices = {} # type: Dict[str, list]
+
+    
+    def __init__(self, hw_server_url='localhost:3121', waitStartup=True, full_init=True, **kwargs):
+        self.hw_server_url = hw_server_url
+        self.sio = None
+        self.sioLink = None
+        super(VivadoHWServer, self).__init__(waitStartup, **kwargs)
+        
+        if full_init:
+            assert waitStartup
+        
+            self.do('source hw_server.tcl')
+            vivadoRX.do('init ' + rx_hw_server_url)
+            
+          
+    def fetchDevices(self, force = False):
+        '''_fetchDevices go thorugh the blasters and fetches all the hw devices and stores into the
+        allDevices dict. Private method, use get_devices, which will fetch devices if it needed.
+        '''
+        
+        if force or self.get_devices(auto_fetch = False) is None :
+            logger.info('Exploring target devices (fetch_devices: this can take a while)')
+            self.do('set devices [fetch_devices]')
+            try:
+                devices = self.get_var('devices')
+            except PylinxException as ex:
+                raise PylinxException('No target device found. Please connect and power up your device(s)')
+
+            # Get a list of all devices on all target.
+            # Remove the brackets. (fetch_devices returns lists.)
+            devices = re.findall(r'\{(.+?)\}', devices[0])
+            VivadoWrapper.allDevices[hw_server_url] = devices
+            
+        return get_devices(auto_fetch = False)
+  
+       
+    def get_devices(self, auto_fetch = True, hw_server_url = None):
+        '''Returns the hardware devices. auto_fetch fetches automatically the devices, if they have
+        not fetched yet.'''
+
+        if hw_server_url is None:
+            hw_server_url = self.hw_server_url
+        try:
+            return VivadoWrapper.allDevices[hw_server_url]
+        except KeyError:
+            if auto_fetch and hw_server_url == self.hw_server_url:
+                return self._fetchDevices(force = True)
+            raise PylinxException('KeyError: No devices has fetched yet. Use _fetchDevices() first!')
+    
+        
+    def chooseDevice(self, **kwargs):
+        ''' set the hw target (blaster) and device (FPGA) for TX and RX side.
+        '''
+        # Print devices to user to choose from them.
+        devices = self.get_devices()
+        for i, dev in enumerate(devices):
+            print(str(i) + ' ' + dev)
+
+        print('Choose device for {}: '.format(self.sideName), end='')
+        deviceId = input()
+        device = devices[deviceId]
+
+        errmsgs = ['DONE status = 0', 'The debug hub core was not detected.']
+        self.do('set_device ' + device, vivadoPrompt, puts, errmsgs = errmsgs)
+
+
+    def chooseSio(self, createLink=True, **kwargs):
+        ''' Set the transceiver channel for TX/RX side.
+        '''
+        self.do('', **kwargs)
+        errmsgs = ['No matching hw_sio_gts were found.']
+        self.do('get_hw_sio_gts', errmsgs=errmsgs, **kwargs)
+        sios = [x for x in self.childProc.before.splitlines() if x ]
+        sios = sios[0].split(' ')
+        for i, sio in enumerate(sios):
+            print(str(i) + ' ' + sio)
+        print('Print choose a SIO for {} side : '.format(self.sideName), end='')
+        sioId = input()
+        self.sio = sios[sioId]
+
+        if createLink:
+            self.do('create_link ' + self.sio, **kwargs)
+        
+    def resetGT(self):
+        resetName = 'PORT.GT{}RESET'.format(self.sideName)
+        self.set_property(resetName, '1', '[get_hw_sio_gts  {{}}]'.format(self.sio))
+        self.commit_hw_sio()
+        self.set_property(resetName, '0', '[get_hw_sio_gts  {{}}]'.format(self.sio))
+        self.commit_hw_sio()
+
+
+    def commit_hw_sio(self):
+        self.set_property('commit_hw_sio' '0' '[get_hw_sio_gts  {{}}]'.format(self.sio))
+     

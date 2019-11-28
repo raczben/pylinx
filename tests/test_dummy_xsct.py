@@ -29,7 +29,7 @@ def test_xsct():
         xsct.do('set a 5')
         xsct.do('set b 4')
         assert int(xsct.do('expr $a + $b')) == 9
-        with pytest.raises(pylinx.PyXilException):
+        with pytest.raises(pylinx.PylinxException):
             xsct.do('expr $a + $c')
 
         xsct.send('exit')
