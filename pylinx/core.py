@@ -256,7 +256,7 @@ class Vivado():
         self.do(cmd=None, **kwargs)
         
         
-    def do(self, cmd, prompt=None, timeout=None, wait_prompt=True, puts=False, errmsgs=[], encoding="utf-8", native_answer=False):
+    def do(self, cmd, prompt=None, timeout=None, wait_prompt=True, errmsgs=[], encoding="utf-8", native_answer=False):
         ''' do a simple command in Vivado console
         '''
         if self.childProc.terminated:
@@ -283,10 +283,6 @@ class Vivado():
                 if em.search(self.last_before):
                     logger.error('during running command: ' + repr(cmd) + self.last_before)
                     raise PyXilException('during running command: ' + repr(cmd) + self.last_before)
-            if puts:
-                print(self.last_cmd, end='')
-                print(self.last_before, end='')
-                print(self.last_prompt, end='')
                 
             if native_answer:
                 return self.last_before
@@ -297,6 +293,11 @@ class Vivado():
                 
         return None
         
+    def interact(self, cmd=None, **kwargs):
+        self.do(cmd, **kwargs)
+        before_to_print = os.linesep.join(self.last_before.split(xsct_line_end)[1:])
+        print(before_to_print, end='')
+        print(self.last_prompt, end='')
         
     def get_var(self, varname, **kwargs):
         no_var_msg = 'can\'t read "{}": no such variable'.format(varname)
