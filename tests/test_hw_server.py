@@ -33,43 +33,21 @@ def valid_platform():
     return True
 
 
-def test_vivado_init():
+def test_hw_server_init():
     if not valid_platform():
         pytest.skip("unsupported platform")
 
-    vivado = pylinx.Vivado(linux_vivado_path)
+    vivado = pylinx.VivadoHWServer(linux_vivado_path)
     vivado.exit(force=True)
     vivado.exit()
 
 
-def test_xsct_vivado_exit():
+def test_fetch_devices():
     if not valid_platform():
         pytest.skip("unsupported platform")
 
-    vivado = pylinx.Vivado(linux_vivado_path)
-    assert vivado.exit(force=False) == 0
+    vivado = pylinx.VivadoHWServer(linux_vivado_path)
+    devices = vivado.get_devices()
+    assert devices == vivado.get_devices()
     vivado.exit()
 
-
-def test_vivado_do():
-    if not valid_platform():
-        pytest.skip("unsupported platform")
-
-    vivado = pylinx.Vivado(linux_vivado_path)
-
-    try:
-        assert int(vivado.do('pid')) == vivado.pid()
-        vivado.do('set a 5')
-        vivado.do('set b 4')
-        assert int(vivado.do('expr $a + $b')) == 9
-        with pytest.raises(pylinx.PylinxException):
-            vivado.do('expr $a + $c', errmsgs=['can\'t read "c": no such variable'])
-
-        assert vivado.do('puts hello', prompt='% ') == 'hello'
-        assert vivado.do('puts world', timeout=1) == 'world'
-    except:
-        print(vivado.last_cmds)
-        print(vivado.last_befores)
-        raise
-    finally:
-        assert vivado.exit() == 0

@@ -14,14 +14,13 @@ import pylinx
 __here__ = os.path.dirname(os.path.realpath(__file__))
 
 
-def test_dummy_vivado_init():
+def test_vivado_init():
     vivado = pylinx.Vivado(executable='tclsh', args=[], prompt='% ')
     vivado.exit(force=True)
     vivado.exit()
-    
 
 
-def test_xsct_dummy_vivado_exit():
+def test_vivado_exit():
     vivado = pylinx.Vivado(executable='tclsh', args=[], prompt='% ')
     assert vivado.exit(force=False) == 0
     vivado.exit()
@@ -42,6 +41,7 @@ def test_vivado_do():
         assert vivado.do('puts world', timeout=1) == 'world'
     finally:
         assert vivado.exit() == 0
+
 
 def test_vivado_vars():
     vivado = pylinx.Vivado(executable='tclsh', args=[], prompt='% ')
@@ -69,13 +69,13 @@ def test_vivado_properties():
 
     try:
         dummy_prop = os.path.abspath(os.path.join(__here__, 'dummy_vivado.tcl'))
+        dummy_prop = dummy_prop.replace(os.sep, '/')
         vivado.do('source ' + dummy_prop)
         vivado.set_property('freqency', 100, 'sys_clock')
         assert vivado.get_property('freqency', 'sys_clock') == '100'
         
     finally:
         assert vivado.exit() == 0
-
 
 
 def test_vivado_interact():

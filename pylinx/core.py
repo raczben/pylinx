@@ -17,10 +17,10 @@ import re
 #  - wexpect/pexpect to launch ant interact with subprocesses.
 if platform.system() == 'Windows':
     import wexpect as expect
-    print(expect.__version__)
-else: # Linux
-    import pexpect as expect
 
+    print(expect.__version__)
+else:  # Linux
+    import pexpect as expect
 
 # The directory of this script file.
 __here__ = os.path.dirname(os.path.realpath(__file__))
@@ -37,13 +37,17 @@ try:
 except KeyError as _:
     logger_level = logging.WARNING
 
-logger = logging.getLogger('pysct')
+logger = logging.getLogger('pylinx')
 logger.setLevel(logger_level)
 sh = logging.StreamHandler()
-format = '%(asctime)s - %(filename)s::%(funcName)s - %(levelname)s - %(message)s'
+format = '%(asctime)s - %(filename)s:%(lineno)d - %(levelname)s - %(message)s'
 formatter = logging.Formatter(format)
 sh.setFormatter(formatter)
 logger.addHandler(sh)
+fh = logging.FileHandler('pylinx.log', 'w', 'utf-8')
+formatter = logging.Formatter(format)
+fh.setFormatter(formatter)
+logger.addHandler(fh)
 
 # xsct_line_end is the line endings in the XSCT console. It doesn't depend on the platform. It is
 # always Windows-style \\r\\n.
@@ -98,7 +102,7 @@ class XsctServer:
         dummy_executable = os.path.abspath(os.path.join(__here__, 'dummy_xsct.tcl'))
         start_command = ['tclsh', dummy_executable]
         self._launch_child(start_command)
-        
+
     def _launch_child(self, start_command, verbose=False):
         logger.info('Starting xsct server: %s', start_command)
         if verbose:
@@ -107,7 +111,6 @@ class XsctServer:
             stdout = open(os.devnull, 'w')
         self._xsct_server = subprocess.Popen(start_command, stdout=stdout)
         logger.info('xsct started with PID: %d', self._xsct_server.pid)
-        
 
     def stop_server(self, wait=True):
         """Kills the server.
@@ -124,13 +127,16 @@ class XsctServer:
             logger.debug("The server is alive, let's kill it.")
 
             # Kill all child process the XSCT starts in a terminal.
-            current_process = psutil.Process(self._xsct_server.pid)
-            children = current_process.children(recursive=True)
-            children.append(current_process)
-            for child in reversed(children):
-                logger.debug("Killing child with pid: %d", child.pid)
-                os.kill(child.pid, signal.SIGTERM)  # or signal.SIGKILL
-
+            current_process = None
+            try:
+                current_process = psutil.Process(self._xsct_server.pid)
+                children = current_process.children(recursive=True)
+                children.append(current_process)
+                for child in reversed(children):
+                    logger.debug("Killing child with pid: %d", child.pid)
+                    os.kill(child.pid, signal.SIGTERM)  # or signal.SIGKILL
+            except psutil._exceptions.NoSuchProcess as e:
+                logger.debug('psutil.NoSuchProcess process no longer exists.')
             if wait:
                 poll = self._xsct_server.poll()
                 while poll is None:
@@ -142,7 +148,7 @@ class XsctServer:
 
         else:
             logger.debug("The server is not alive, return...")
-            
+
     def pid(self):
         return self._xsct_server.pid
 
@@ -233,14 +239,15 @@ class Xsct:
 
 default_vivado_prompt = 'Vivado% '
 
-class Vivado():
-    '''Vivado is a native interface towards the Vivado TCL console. You can run TCL commands in it
-    using do() method. This is a quasi state-less class
-    '''
 
-    def __init__(self, executable, args=['-mode', 'tcl'], name='Vivado_01',
-        prompt=default_vivado_prompt, timeout=10, encoding="utf-8", waitStartup=True):
-        self.childProc = None
+class Vivado:
+    """Vivado is a native interface towards the Vivado TCL console. You can run TCL commands in it
+    using do() method. This is a quasi state-less class
+    """
+
+    def __init__(self, executable, args=None, name='Vivado_01',
+                 prompt=default_vivado_prompt, timeout=10, encoding="utf-8", wait_startup=True):
+        self.child_proc = None
         self.name = name
         self.prompt = prompt
         self.timeout = timeout
@@ -248,27 +255,35 @@ class Vivado():
         self.last_cmds = []
         self.last_befores = []
         self.last_prompts = []
-        
-        if executable is not None: # None is fake run
-            self.childProc = expect.spawn(executable, args)
-        
-        if waitStartup:
-            self.waitStartup()
-        
-        
-    def waitStartup(self, **kwargs):
+
+        if args is None:
+            args = ['-mode', 'tcl']
+
+        if executable is not None:  # None is fake run
+            logger.info('Spawning Vivado: ' + executable + str(args))
+            self.child_proc = expect.spawn(executable, args)
+
+        if wait_startup:
+            self.wait_startup()
+
+    def wait_startup(self, **kwargs):
         self.do(cmd=None, **kwargs)
-        
-        
-    def do(self, cmd, prompt=None, timeout=None, wait_prompt=True, errmsgs=[], encoding="utf-8", native_answer=False):
-        ''' do a simple command in Vivado console
-        '''
-        if self.childProc.terminated:
+
+    def do(self, cmd, prompt=None, timeout=None, wait_prompt=True, errmsgs=[], encoding="utf-8",
+           native_answer=False):
+        """ do a simple command in Vivado console
+        :rtype: str
+        """
+        if self.child_proc.terminated:
             logger.error('The process has been terminated. Sending command is not possible.')
             raise PylinxException('The process has been terminated. Sending command is not possible.')
-            
+
         if cmd is not None:
-            self.childProc.sendline(cmd.encode())
+            logger.debug('Sending command: ' + str(cmd))
+            if platform.system() == 'Windows':
+                self.child_proc.sendline(cmd)
+            else:
+                self.child_proc.sendline(cmd.encode())
         if prompt is None:
             prompt = self.prompt
         if timeout is None:
@@ -276,20 +291,25 @@ class Vivado():
         if encoding is None:
             encoding = self.encoding
         if wait_prompt:
-            self.childProc.expect(prompt, timeout=timeout)
-            logger.debug(str(cmd) + str(self.childProc.before) + str(self.childProc.match.group(0)))
+            self.child_proc.expect(prompt, timeout=timeout)
+            logger.debug(str(cmd) + str(self.child_proc.before) + str(self.child_proc.after))
             self.last_cmds.append(cmd)
-            before = self.childProc.before.decode(encoding)
-            prompt = self.childProc.match.group(0).decode(encoding)
+            
+            if platform.system() == 'Windows':
+                before = self.child_proc.before
+                prompt = self.child_proc.after
+            else:
+                before = self.child_proc.before.decode(encoding)
+                prompt = self.child_proc.after
             self.last_befores.append(before)
             self.last_prompts.append(prompt)
             for em in errmsgs:
-                if isinstance(em, (str)):
+                if isinstance(em, str):
                     em = re.compile(em)
                 if em.search(before):
                     logger.error('during running command: {}, before: {}'.format(cmd, before))
                     raise PylinxException('during running command: {}, before: {}'.format(cmd, before))
-                
+
             if native_answer:
                 return before
             else:
@@ -297,96 +317,101 @@ class Vivado():
                 ret = os.linesep.join(before.split(xsct_line_end)[1:-1])
                 # print(repr(before.split(xsct_line_end)))
                 return ret.rstrip()
-                
+
         return None
-        
+
     def interact(self, cmd=None, **kwargs):
         if cmd is not None:
             self.do(cmd, **kwargs)
         before_to_print = os.linesep.join(self.last_befores[-1].split(xsct_line_end)[1:])
         print(before_to_print, end='')
         print(self.last_prompts[-1], end='')
-        
+
     def get_var(self, varname, **kwargs):
         no_var_msg = 'can\'t read "{}": no such variable'.format(varname)
         errmsgs = [re.compile(no_var_msg)]
         command = 'puts ${}'.format(varname)
         ans = self.do(command, errmsgs=errmsgs, **kwargs)
-        
+
         return ans
 
     def set_var(self, varname, value, **kwargs):
         command = 'set {} {}'.format(varname, value)
-        
+
         ans = self.do(command, **kwargs)
-        
+
         return ans
-    
+
     def get_property(self, propName, objectName, **kwargs):
-        ''' does a get_property command in vivado terminal. 
-        
+        """ does a get_property command in vivado terminal.
+
         It fetches the given property and returns it.
-        '''
+        """
         cmd = 'get_property {} {}'.format(propName, objectName)
         return self.do(cmd, **kwargs)
-    
-    
+
     def set_property(self, propName, value, objectName, **kwargs):
-        ''' Sets a property.
-        '''
+        """ Sets a property.
+        """
         cmd = 'set_property {} {} {}'.format(propName, value, objectName)
         self.do(cmd, **kwargs)
-        
+
     def pid(self):
-        return self.childProc.pid
-        
-        
+        parent = psutil.Process(self.child_proc.pid)
+        children = parent.children(recursive=True)
+        if len(children) == 0:
+            return self.child_proc.pid
+        for child in children:
+            if re.match(".*vivado.*", child.name(), re.I):
+                return child.pid
+        raise PylinxException('Unknown pid')
+
     def exit(self, force=False, **kwargs):
-        if self.childProc is None:
+        logger.debug('start')
+        if self.child_proc is None:
             return None
-        if self.childProc.terminated:
+        if self.child_proc.terminated:
             logger.warning('This process has been terminated.')
             return None
         else:
             if force:
-                return self.childProc.terminate()
+                return self.child_proc.terminate()
             else:
                 self.do('exit', wait_prompt=False, **kwargs)
-                return self.childProc.wait()
+                return self.child_proc.wait()
 
 
 class VivadoHWServer(Vivado):
-    '''VivadoHWServer adds hw_server dependent handlers for the Vivado class.
-    '''
+    """VivadoHWServer adds hw_server dependent handlers for the Vivado class.
+    """
 
     '''allDevices is a static variable. Its stores all the devices for all hardware server. The indexes
     are the urls and the values are lists of the available hardware devices. The default behaviour
     is the following: One key is "localhost:3121" (which is the default hw server) and this key
     indexes a list with all local devices (which are normally includes two devices).
     See get_devices() and fetchDevices for more details.'''
-    allDevices = {} # type: Dict[str, list]
+    allDevices = {}  # type: dict[str, list]
 
-    
-    def __init__(self, executable, hw_server_url='localhost:3121', waitStartup=True, full_init=True, **kwargs):
+    def __init__(self, executable, hw_server_url='localhost:3121', wait_startup=True, full_init=True, **kwargs):
         self.hw_server_url = hw_server_url
         self.sio = None
         self.sioLink = None
-        super(VivadoHWServer, self).__init__(executable, waitStartup=waitStartup, **kwargs)
-        
+        self.hw_server_url = hw_server_url
+        super(VivadoHWServer, self).__init__(executable, wait_startup=wait_startup, **kwargs)
+
         if full_init:
-            assert waitStartup
-            
+            assert wait_startup
+
             hw_server_tcl = os.path.join(__here__, 'hw_server.tcl')
             self.do('source ' + hw_server_tcl)
             self.do('init ' + hw_server_url)
-            
-          
-    def fetchDevices(self, force = False):
-        '''_fetchDevices go thorugh the blasters and fetches all the hw devices and stores into the
+
+    def fetch_devices(self, force=False):
+        """_fetchDevices go thorugh the blasters and fetches all the hw devices and stores into the
         allDevices dict. Private method, use get_devices, which will fetch devices if it needed.
-        '''
-        
-        if force or self.get_devices(auto_fetch = False) is None :
+        """
+
+        if force or self.get_devices(auto_fetch=False) is None:
             logger.info('Exploring target devices (fetch_devices: this can take a while)')
             self.do('set devices [fetch_devices]')
             try:
@@ -397,66 +422,61 @@ class VivadoHWServer(Vivado):
             # Get a list of all devices on all target.
             # Remove the brackets. (fetch_devices returns lists.)
             devices = re.findall(r'\{(.+?)\}', devices[0])
-            VivadoWrapper.allDevices[hw_server_url] = devices
-            
-        return get_devices(auto_fetch = False)
-  
-       
-    def get_devices(self, auto_fetch = True, hw_server_url = None):
-        '''Returns the hardware devices. auto_fetch fetches automatically the devices, if they have
-        not fetched yet.'''
+            VivadoHWServer.allDevices[self.hw_server_url] = devices
+
+        return self.get_devices(auto_fetch=False)
+
+    def get_devices(self, auto_fetch=True, hw_server_url=None):
+        """Returns the hardware devices. auto_fetch fetches automatically the devices, if they have
+        not fetched yet."""
 
         if hw_server_url is None:
             hw_server_url = self.hw_server_url
         try:
-            return VivadoWrapper.allDevices[hw_server_url]
+            return VivadoHWServer.allDevices[hw_server_url]
         except KeyError:
             if auto_fetch and hw_server_url == self.hw_server_url:
-                return self._fetchDevices(force = True)
+                return self.fetch_devices(force=True)
             raise PylinxException('KeyError: No devices has fetched yet. Use _fetchDevices() first!')
-    
-        
-    def chooseDevice(self, **kwargs):
-        ''' set the hw target (blaster) and device (FPGA) for TX and RX side.
-        '''
+
+    def choose_device(self, **kwargs):
+        """ set the hw target (blaster) and device (FPGA) for TX and RX side.
+        """
         # Print devices to user to choose from them.
         devices = self.get_devices()
         for i, dev in enumerate(devices):
             print(str(i) + ' ' + dev)
 
-        print('Choose device for {}: '.format(self.sideName), end='')
-        deviceId = input()
-        device = devices[deviceId]
+        print('Choose device for {}: '.format(self.name), end='')
+        device_id = input()
+        device = devices[device_id]
 
         errmsgs = ['DONE status = 0', 'The debug hub core was not detected.']
-        self.do('set_device ' + device, vivadoPrompt, puts, errmsgs = errmsgs)
+        self.do('set_device ' + device, errmsgs=errmsgs, **kwargs)
 
-
-    def chooseSio(self, createLink=True, **kwargs):
-        ''' Set the transceiver channel for TX/RX side.
-        '''
+    def choose_sio(self, createLink=True, **kwargs):
+        """ Set the transceiver channel for TX/RX side.
+        """
         self.do('', **kwargs)
         errmsgs = ['No matching hw_sio_gts were found.']
         self.do('get_hw_sio_gts', errmsgs=errmsgs, **kwargs)
-        sios = [x for x in self.childProc.before.splitlines() if x ]
+        sios = [x for x in self.child_proc.before.splitlines() if x]
         sios = sios[0].split(' ')
         for i, sio in enumerate(sios):
             print(str(i) + ' ' + sio)
-        print('Print choose a SIO for {} side : '.format(self.sideName), end='')
+        print('Print choose a SIO for {} side : '.format(self.name), end='')
         sioId = input()
         self.sio = sios[sioId]
 
         if createLink:
             self.do('create_link ' + self.sio, **kwargs)
-        
-    def resetGT(self):
-        resetName = 'PORT.GT{}RESET'.format(self.sideName)
+
+    def reset_gt(self):
+        resetName = 'PORT.GT{}RESET'.format(self.name)
         self.set_property(resetName, '1', '[get_hw_sio_gts  {{}}]'.format(self.sio))
         self.commit_hw_sio()
         self.set_property(resetName, '0', '[get_hw_sio_gts  {{}}]'.format(self.sio))
         self.commit_hw_sio()
 
-
     def commit_hw_sio(self):
         self.set_property('commit_hw_sio' '0' '[get_hw_sio_gts  {{}}]'.format(self.sio))
-     
