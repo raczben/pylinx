@@ -11,6 +11,8 @@ import socket
 import subprocess
 import signal
 import psutil
+from .util import setup_logger
+from .util import PylinxException
 import re
 
 # Import 3th party modules:
@@ -26,28 +28,10 @@ else:  # Linux
 __here__ = os.path.dirname(os.path.realpath(__file__))
 
 #
-# Setup the logger
+# Get the logger (util.py has sets it)
 #
-
-# The logger reads the `PYSCT_LOGGER_LEVEL` environment variable and set its the verbosity level
-# based on that variable. The default is the WARNING level.
-try:
-    logger_level = os.environ['PYSCT_LOGGER_LEVEL']
-    print(logger_level)
-except KeyError as _:
-    logger_level = logging.WARNING
-
+setup_logger()
 logger = logging.getLogger('pylinx')
-logger.setLevel(logger_level)
-sh = logging.StreamHandler()
-format = '%(asctime)s - %(filename)s:%(lineno)d - %(levelname)s - %(message)s'
-formatter = logging.Formatter(format)
-sh.setFormatter(formatter)
-logger.addHandler(sh)
-fh = logging.FileHandler('pylinx.log', 'w', 'utf-8')
-formatter = logging.Formatter(format)
-fh.setFormatter(formatter)
-logger.addHandler(fh)
 
 # xsct_line_end is the line endings in the XSCT console. It doesn't depend on the platform. It is
 # always Windows-style \\r\\n.
@@ -56,12 +40,6 @@ xsct_line_end = '\r\n'
 # The default host and port.
 HOST = '127.0.0.1'  # Standard loop-back interface address (localhost)
 PORT = 4567
-
-
-class PylinxException(Exception):
-    """The exception for this project.
-    """
-    pass
 
 
 class XsctServer:
@@ -292,7 +270,7 @@ class Vivado:
             encoding = self.encoding
         if wait_prompt:
             self.child_proc.expect(prompt, timeout=timeout)
-            logger.debug(str(cmd) + str(self.child_proc.before) + str(self.child_proc.after))
+            logger.debug("before: " + repr(self.child_proc.before))
             self.last_cmds.append(cmd)
             
             if platform.system() == 'Windows':
@@ -348,7 +326,7 @@ class Vivado:
         It fetches the given property and returns it.
         """
         cmd = 'get_property {} {}'.format(propName, objectName)
-        return self.do(cmd, **kwargs)
+        return self.do(cmd, **kwargs).strip()
 
     def set_property(self, propName, value, objectName, **kwargs):
         """ Sets a property.
@@ -403,17 +381,18 @@ class VivadoHWServer(Vivado):
             assert wait_startup
 
             hw_server_tcl = os.path.join(__here__, 'hw_server.tcl')
-            self.do('source ' + hw_server_tcl)
+            hw_server_tcl = hw_server_tcl.replace(os.sep, '/')
+            self.do('source ' + hw_server_tcl, errmsgs=['no such file or directory'])
             self.do('init ' + hw_server_url)
 
-    def fetch_devices(self, force=False):
+    def fetch_devices(self, force=True):
         """_fetchDevices go thorugh the blasters and fetches all the hw devices and stores into the
         allDevices dict. Private method, use get_devices, which will fetch devices if it needed.
         """
 
         if force or self.get_devices(auto_fetch=False) is None:
             logger.info('Exploring target devices (fetch_devices: this can take a while)')
-            self.do('set devices [fetch_devices]')
+            self.do('set devices [fetch_devices]', errmsgs=["Labtoolstcl 44-133", "No target blaster found"])
             try:
                 devices = self.get_var('devices')
             except PylinxException as ex:
@@ -421,8 +400,10 @@ class VivadoHWServer(Vivado):
 
             # Get a list of all devices on all target.
             # Remove the brackets. (fetch_devices returns lists.)
-            devices = re.findall(r'\{(.+?)\}', devices[0])
+            logger.debug("devices: " + str(devices))
+            devices = re.findall(r'\{(.+?)\}', devices)
             VivadoHWServer.allDevices[self.hw_server_url] = devices
+            logger.debug("allDevices: " + str(VivadoHWServer.allDevices))
 
         return self.get_devices(auto_fetch=False)
 
@@ -437,18 +418,22 @@ class VivadoHWServer(Vivado):
         except KeyError:
             if auto_fetch and hw_server_url == self.hw_server_url:
                 return self.fetch_devices(force=True)
-            raise PylinxException('KeyError: No devices has fetched yet. Use _fetchDevices() first!')
+            raise PylinxException('KeyError: No devices has fetched yet. Use fetchDevices() first!')
 
     def choose_device(self, **kwargs):
         """ set the hw target (blaster) and device (FPGA) for TX and RX side.
         """
         # Print devices to user to choose from them.
         devices = self.get_devices()
+
+        if len(devices) < 1:
+            raise PylinxException("There is no devices! Please use fetch_devices() first!")
+
         for i, dev in enumerate(devices):
             print(str(i) + ' ' + dev)
 
-        print('Choose device for {}: '.format(self.name), end='')
-        device_id = input()
+        device_id = input('Choose device for {} (Give a number): '.format(self.name))
+        device_id = int(device_id)
         device = devices[device_id]
 
         errmsgs = ['DONE status = 0', 'The debug hub core was not detected.']
@@ -464,9 +449,9 @@ class VivadoHWServer(Vivado):
         sios = sios[0].split(' ')
         for i, sio in enumerate(sios):
             print(str(i) + ' ' + sio)
-        print('Print choose a SIO for {} side : '.format(self.name), end='')
-        sioId = input()
-        self.sio = sios[sioId]
+        print('Print choose a SIO for {} side (Give a number): '.format(self.name), end='')
+        sio_id = int(input())
+        self.sio = sios[sio_id]
 
         if createLink:
             self.do('create_link ' + self.sio, **kwargs)

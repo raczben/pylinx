@@ -42,26 +42,27 @@ names = [
     
     
 def load_scans():
-    scanStructures = {}
+    scan_structures = {}
     print('Start parsing csv files...', end='')
     for name in names:
         filename = os.path.join(test_path, 'resources', name + '.csv')
-        scanStructures[name] = pylinx.ScanStructure(filename)
-    return scanStructures
+        scan_structures[name] = pylinx.ScanStructure(filename)
+    return scan_structures
    
     
 def test_scan_struct():
-    scanStructures = load_scans()
-    for name, scanStruct in scanStructures.items():
+    scan_structures = load_scans()
+    for name, scanStruct in scan_structures.items():
         assert scanStruct['Scan Name'] == name
+        #print(scanStruct)
 
 
 def test_valid_eye():
-    print('Testnig valid eye...', end='')
+    print('Testing valid eye...', end='')
     scanStructures = load_scans()
     ok = True
     for name, scanStruct in scanStructures.items():
-        validEye = scanStruct._testEye()
+        validEye = scanStruct._test_eye()
         if 'non_valid' in name:
             validEyeExpected = False
         else:
@@ -70,14 +71,14 @@ def test_valid_eye():
 
 
 def test_open_area():
-    print('Testnig open areas...')
-    scanStructures = load_scans()
+    print('Testing open areas...')
+    scan_structures = load_scans()
     ok = True
-    for name, scanStruct in scanStructures.items():
-        openArea = scanStruct.getOpenArea()
+    for name, scanStruct in scan_structures.items():
+        open_area = scanStruct.get_open_area()
         if 'non_valid' in name:
-            assert openArea==0.0, 'Mismatch: at ' + name
+            assert open_area == 0.0, 'Mismatch: at ' + name
         else:
-            assert openArea>0.0, 'Mismatch: at ' + name
-        print(name + ': ' + str(openArea))
+            assert open_area > 0.0, 'Mismatch: at ' + name
+        print(name + ': ' + str(open_area))
 

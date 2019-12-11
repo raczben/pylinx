@@ -1,31 +1,33 @@
 import csv
 import logging
+from .util import PylinxException
+from statistics import mean
 
 logger = logging.getLogger('pylinx')
 
 
 class ScanStructure(dict):
     def __init__(self, filename):
-        self.readCsv(filename)
-        
-        
-    def readCsv(self, filename):
+        super(ScanStructure, self).__init__()
+        self.read_csv(filename)
+
+    def read_csv(self, filename):
         # ret = {}
-        scanRows = []
-        storeScanRows = False
-        
+        scan_rows = []
+        store_scan_rows = False
+
         with open(filename) as csv_file:
             csv_reader = csv.reader(csv_file, delimiter=',')
             for row in csv_reader:
                 if row[0] == 'Scan Start':
-                    storeScanRows = True
+                    store_scan_rows = True
                     continue
                 elif row[0] == 'Scan End':
-                    storeScanRows = False
-                    self['scanData'] = ScanStructure._parsescanRows(scanRows)
+                    store_scan_rows = False
+                    self['scanData'] = ScanStructure._parse_scan_rows(scan_rows)
                     continue
-                elif storeScanRows:
-                    scanRows.append(row)
+                elif store_scan_rows:
+                    scan_rows.append(row)
                     continue
                 else:
                     # Try to convert numbers if ots possible
@@ -34,100 +36,99 @@ class ScanStructure(dict):
                     except ValueError:
                         val = row[1]
                     self[row[0]] = val
-        
-        
-    @staticmethod
-    def _parsescanRows(scanRows):
-        scanData = {
-            'scanType': scanRows[0][0],
-            'x':[],
-            'y':[],
-            'values':[]
-            }
-            
-        if scanData['scanType'] not in ['1d bathtub', '2d statistical']:
-            logger.error('Uknnown scan type: ' + scanData['scanType'])
-            raise Clexeption('Uknnown scan type: ' + scanData['scanType'])
-            
-        xdata = scanRows[0][1:]
-        # Need to normalize, dont know why...
-        divider = abs(float(xdata[0])*2)
-        
-        scanData['x'] = [float(x)/divider for x in scanRows[0][1:]]
-        
-        for r in scanRows[1:]:
-            intr = [float(x) for x in r]
-            scanData['y'].append(intr[0])
-            scanData['values'].append(intr[1:])
-           
-        return scanData
-        
 
-    def _testEye(self, xLimit = 0.45, xValLimit = 0.005):
-        ''' Test that the read data is an eye or not.
+    @staticmethod
+    def _parse_scan_rows(scan_rows):
+        scan_data = {
+            'scanType': scan_rows[0][0],
+            'x': [],
+            'y': [],
+            'values': []    # type: List[List[float]]
+        }
+
+        if scan_data['scanType'] not in ['1d bathtub', '2d statistical']:
+            logger.error('Unknown scan type: ' + scan_data['scanType'])
+            raise PylinxException('Unknown scan type: ' + scan_data['scanType'])
+
+        xdata = scan_rows[0][1:]
+        # Need to normalize, dont know why...
+        divider = abs(float(xdata[0]) * 2)
+
+        scan_data['x'] = [float(x) / divider for x in scan_rows[0][1:]]
+
+        for r in scan_rows[1:]:
+            intr = [float(x) for x in r]
+            scan_data['y'].append(intr[0])
+            scan_data['values'].append(intr[1:])
+
+        return scan_data
+
+    def _test_eye(self, x_limit=0.45, x_val_limit=0.005):
+        """ Test that the read data is an eye or not.
         A valid eye must contains 'bit errors' at the edges. If the eye is clean at +-0.500 UI, this
-        definetly not an eye.
-        '''
-        scanData = self['scanData']
-        
+        definitely not an eye.
+        """
+        scan_data = self['scanData']
+
         # Get the indexes of the 'edge'
-        # Edge means where abs(x) offset is big, bigger than 0.45.
-        edgeIndexes=[i for i,x in enumerate(scanData['x']) if abs(x) > xLimit]
-        if len(edgeIndexes) < 2:
+        # Edge means where abs(x) offset is big, bigger than x_limit=0.45.
+        edge_indexes = [i for i, x in enumerate(scan_data['x']) if abs(x) > x_limit]
+        logger.debug(edge_indexes)
+        if len(edge_indexes) < 2:
             logger.warning('Too few edge indexes')
             return False
-            
-        # edgeValues contains BER values of the edge positions.
-        edgeValues = []
-        for v in scanData['values']:
-            edgeValues.append([v[i] for i in edgeIndexes])
-        
+
+        # edge_values contains BER values of the edge positions.
+        edge_values = []
+        for v in scan_data['values']:
+            edge_values.append([v[i] for i in edge_indexes])
+
         # print('edgeValues: ' + str(edgeValues))
         # A valid eye must contains high BER values at the edges:
-        globalMinimum = min([min(ev) for ev in edgeValues])
-        
-        if globalMinimum < xValLimit:
-            logger.info('globalMinimum ({}) is less than xValLimit ({})  -> NOT a valid eye.'.format(globalMinimum, xValLimit))
+        global_minimum = min([min(ev) for ev in edge_values])
+
+        if global_minimum < x_val_limit:
+            logger.info(
+                'globalMinimum ({}) is less than x_val_limit ({})  -> NOT a valid eye.'.format(
+                    global_minimum, x_val_limit))
             return False
         else:
-            logger.debug('globalMinimum ({}) is greater than xValLimit ({})  -> Valid eye.'.format(globalMinimum, xValLimit))
+            logger.debug(
+                'global_minimum ({}) is greater than x_val_limit ({})  -> Valid eye.'.format(
+                    global_minimum, x_val_limit))
             return True
 
-
-    def _getArea(self, xLimit = 0.2):
-        ''' This is an improoved area meter. 
+    def _get_area(self, x_limit=0.2):
+        """ This is an improved area meter.
         Returns the open area of an eye even if there is no definite open eye.
         Returns the center area multiplied by the BER values. (ie the average of the center area.)
-        '''
-        
-        scanData = self['scanData']
+        """
+
+        scan_data = self['scanData']
         # Get the indexes of the 'center'
         # Center means where abs(x) offset is small, less than 0.1.
-        centerIndexes=[i for i,x in enumerate(scanData['x']) if abs(x) < xLimit]
-        if len(centerIndexes) < 2:
+        center_indexes = [i for i, x in enumerate(scan_data['x']) if abs(x) < x_limit]
+        if len(center_indexes) < 2:
             logger.warning('Too few center indexes')
             return False
-        
+
         # centerValues contains BER values of the center positions.
-        centerValues = []
-        for v in scanData['values']:
-            centerValues.append([v[i] for i in centerIndexes])
-        
+        center_values = []
+        for v in scan_data['values']:
+            center_values.append([v[i] for i in center_indexes])
+
         # Get the avg center value:
-        centerAvg = [float(sum(cv))/float(len(cv)) for cv in centerValues]
-        centerAvg = float(sum(centerAvg))/float(len(centerAvg))
-        
-        return centerAvg * self['Horizontal Increment']
+        center_avg = [0.1 / float(sum(cv)) / float(len(cv)) for cv in center_values]
+        center_avg = mean(center_avg)
 
+        return center_avg * self['Horizontal Increment']
 
-    def getOpenArea(self):
-        if self._testEye():
+    def get_open_area(self):
+        if self._test_eye():
             if self['Open Area'] < 1.0:
-                # if the 'offitial open area' is 0 try to improove:
-                return self._getArea()
+                # if the 'official open area' is 0 try to improve:
+                return self._get_area()
             else:
                 return self['Open Area']
         else:
             return 0.0
-    
-    

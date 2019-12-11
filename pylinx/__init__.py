@@ -6,3 +6,5 @@ from .core import PylinxException
 from .core import VivadoHWServer
 
 from .gt_util import ScanStructure
+
+from .util import __version__

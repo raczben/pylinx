@@ -9,6 +9,7 @@ __pycache__/
 # Vivado
 *.jou
 *.lpr
+runs/*
 
 # Distribution / packaging
 .Python

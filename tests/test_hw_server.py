@@ -26,8 +26,8 @@ else:
 
 
 def valid_platform():
-    '''Vivado is not installed on Travis.
-    '''
+    """Vivado is not installed on Travis.
+    """
     if "TRAVIS" in os.environ and os.environ["TRAVIS"] == "true":
         return False
     return True
