@@ -278,7 +278,7 @@ class Vivado:
                 prompt = self.child_proc.after
             else:
                 before = self.child_proc.before.decode(encoding)
-                prompt = self.child_proc.after
+                prompt = self.child_proc.after.decode(encoding)
             self.last_befores.append(before)
             self.last_prompts.append(prompt)
             for em in errmsgs:
@@ -444,9 +444,8 @@ class VivadoHWServer(Vivado):
         """
         self.do('', **kwargs)
         errmsgs = ['No matching hw_sio_gts were found.']
-        self.do('get_hw_sio_gts', errmsgs=errmsgs, **kwargs)
-        sios = [x for x in self.child_proc.before.splitlines() if x]
-        sios = sios[0].split(' ')
+        sios = self.do('get_hw_sio_gts', errmsgs=errmsgs, **kwargs).strip()
+        sios = sios.split(' ')
         for i, sio in enumerate(sios):
             print(str(i) + ' ' + sio)
         print('Print choose a SIO for {} side (Give a number): '.format(self.name), end='')

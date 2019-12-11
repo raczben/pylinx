@@ -117,8 +117,8 @@ proc fetch_sio { side } {
 }
 
 
-proc run_scan { scanFile {hincr 16} {vincr 16} {scanType "2d_full_eye"} {linkName "*"} } {
-    set xil_newScan [create_hw_sio_scan -description {Scan 4} $scanType  [lindex [get_hw_sio_links $linkName] 0 ]]
+proc run_scan { scanFile {hincr 16} {vincr 16} {scanType "2d_full_eye"} {linkName "*"} {description {Scan 000}} } {
+    set xil_newScan [create_hw_sio_scan -description $description $scanType  [lindex [get_hw_sio_links $linkName] 0 ]]
     set_property HORIZONTAL_INCREMENT {$hincr} [get_hw_sio_scans $xil_newScan]
     if { $scanType == "2d_full_eye" } {
         set_property VERTICAL_INCREMENT   {$vincr} [get_hw_sio_scans $xil_newScan]

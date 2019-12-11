@@ -9,6 +9,8 @@ import sys
 
 # The directory of this script file.
 __here__ = os.path.dirname(os.path.realpath(__file__))
+__pylinx__ = os.path.join(__here__, '..')
+sys.path.insert(0, __pylinx__)
 
 from pylinx import ScanStructure
 from pylinx import VivadoHWServer
@@ -62,7 +64,7 @@ def choose_link(vivado_tx, vivado_rx):
     vivado_rx.choose_sio()
 
 
-def independent_finder(vivadoTX, vivadoRX):
+def independent_finder(vivadoTX, vivadoRX, results_dir='runs'):
     """ Runs the optimizer algorithm.
     """
     TXDIFFSWING_values = [
@@ -179,60 +181,88 @@ def independent_finder(vivadoTX, vivadoRX):
     globalParameterSpace["TXPRE"] = TXPRE_values  # [0::2]
     globalParameterSpace["TXPOST"] = TXPOST_values  # [0::2]
 
-    if not os.path.exists("runs"):
-        os.makedirs("runs")
+    if not os.path.exists(results_dir):
+        os.makedirs(results_dir)
 
-    for i in range(globalIteration):
-        for pName, pValues in globalParameterSpace.items():
-            openAreas = []
-            maxArea = 0
-            txSioGt = '[get_hw_sio_gts {}]'.format(vivadoTX.sio)
-            bestValue = vivadoTX.get_property(pName, txSioGt)
+    try:
+        read_results_tcl = open("read_results.tcl", "w")
+        read_results_tcl.writelines('# Generated file by Cleye' + os.linesep)
+        read_results_tcl.writelines('# Run this file to read all scan results into Vivado.' + os.linesep)
+        read_results_tcl.writelines('' + os.linesep)
+        scan_id = 0
 
-            for pValue in pValues:
-                # Test keyboard interrupt:
-                time.sleep(0)
+        for i in range(globalIteration):
+            for pName, pValues in globalParameterSpace.items():
+                openAreas = []
+                maxArea = 0
+                txSioGt = '[get_hw_sio_gts {}]'.format(vivadoTX.sio)
+                bestValue = vivadoTX.get_property(pName, txSioGt)
 
-                logger.info("Create scan ({} {})".format(pName, pValue))
-                vivadoTX.set_property(pName, pValue, txSioGt)
+                for pValue in pValues:
+                    scan_id += 1
+                    # Test keyboard interrupt:
+                    time.sleep(.01)
+
+                    logger.info("Create scan ({} {})".format(pName, pValue))
+                    vivadoTX.set_property(pName, pValue, txSioGt)
+                    vivadoTX.do('commit_hw_sio ' + txSioGt)
+
+                    checkValue = vivadoTX.get_property(pName, txSioGt)
+                    if checkValue not in pValue:  # Readback does not contains brackets {}
+                        logger.error("Something went wrong. Cannot set value {}  {} ".format(checkValue, pValue))
+
+                    # set_property PORT.GTRXRESET 0 [get_hw_sio_gts  {localhost:3121/xilinx_tcf/Digilent/210203A2513BA/0_1_0/IBERT/Quad_113/MGT_X1Y0}]
+                    # commit_hw_sio  [get_hw_sio_gts  {localhost:3121/xilinx_tcf/Digilent/210203A2513BA/0_1_0/IBERT/Quad_113/MGT_X1Y0}]
+
+                    scan_name = "{}{}{}".format(i, pName, pValue)
+                    scan_name = re.sub('\\W', '_', scan_name)
+                    fname = os.path.join(results_dir, scan_name + '.csv')
+                    read_results_tcl.writelines('read_hw_sio_scan ' + os.path.abspath(fname) + os.linesep)
+
+                    # HORIZONTAL_INCREMENT: The greater value sorter scan time
+                    hincr = 4
+                    # VERTICAL_INCREMENT: The greater value sorter scan time
+                    vincr = 4
+
+                    # Specify the scan type. Valid types include:
+                    #   *  1d_bathtub - Scan all horizontal sampling points through the 0 vertical
+                    #      axis.
+                    #   *  2d_full_eye - Scan all horizontal and vertical sampling points to
+                    #      create an "eye".
+                    scanType = "2d_full_eye"
+
+                    # Link name is generated automatically, but we have only one link/Vivado instance, so wild globbing
+                    # is good.
+                    link_name = "*"
+
+                    # Provide a brief description that acts as a label for the serial I/O analyzer scan. The description
+                    # can be used to identify the <hw_sio_scan> object. For instance, you can identify the
+                    # receiver port, so that when you are sweeping many ports you can keep track
+                    # of which port the scan plot s for.
+                    scan_description = scan_name
+
+                    cmd = 'run_scan "{}" {} {} {} {} {}'.format(
+                        fname, hincr, vincr, scanType, link_name, scan_description)
+                    vivadoRX.do(cmd, errmsgs=['ERROR: ', 'args: should be'])
+
+                    scan_struc = ScanStructure(fname)
+                    open_area = scan_struc.get_open_area()
+                    if open_area is None:
+                        logger.error('open_area is None after reading file: ' + fname)
+
+                    logger.info('open_area: {}  (parameters: {} = {})'.format(open_area, pName, pValue))
+                    openAreas.append(open_area)
+
+                    if open_area > maxArea:
+                        maxArea = open_area
+                        bestValue = pValue
+
+                print("pName:  {}    bestParam:  {}".format(pName, bestValue))
+
+                vivadoTX.set_property(pName, bestValue, txSioGt)
                 vivadoTX.do('commit_hw_sio ' + txSioGt)
-
-                checkValue = vivadoTX.get_property(pName, txSioGt)
-                if checkValue not in pValue:  # Readback does not contains brackets {}
-                    logger.error("Something went wrong. Cannot set value {}  {} ".format(checkValue, pValue))
-
-                # set_property PORT.GTRXRESET 0 [get_hw_sio_gts  {localhost:3121/xilinx_tcf/Digilent/210203A2513BA/0_1_0/IBERT/Quad_113/MGT_X1Y0}]
-                # commit_hw_sio  [get_hw_sio_gts  {localhost:3121/xilinx_tcf/Digilent/210203A2513BA/0_1_0/IBERT/Quad_113/MGT_X1Y0}]
-
-                fname = "{}{}{}".format(i, pName, pValue)
-                fname = re.sub('\\W', '_', fname)
-                fname = "runs/" + fname + '.csv'
-
-                hincr = 4
-                vincr = 4
-                # scanType = "1d_bathtub"
-                scanType = "2d_full_eye"
-                linkName = "*"
-                cmd = 'run_scan "{}" {} {} {} {}'.format(fname, hincr, vincr, scanType, linkName)
-                vivadoRX.do(cmd, errmsgs=['ERROR: '])
-
-                scan_struc = ScanStructure(fname)
-                open_area = scan_struc.get_open_area()
-                if open_area is None:
-                    logger.error('open_area is None after reading file: ' + fname)
-
-                logger.info('open_area: {}  (parameters: {} = {})'.format(open_area, pName, pValue))
-                openAreas.append(open_area)
-
-                if open_area > maxArea:
-                    maxArea = open_area
-                    bestValue = pValue
-
-            print("pName:  {}    bestParam:  {}".format(pName, bestValue))
-
-            vivadoTX.set_property(pName, bestValue, txSioGt)
-            vivadoTX.do('commit_hw_sio ' + txSioGt)
-
+    finally:
+        read_results_tcl.close()
 
 def interactiveVivadoConsole(vivadoTX, vivadoRX):
     """ gives full control for user over the two (TX and RX) Vivado consoles.
@@ -284,9 +314,11 @@ if __name__ == '__main__':
             vivado_tx.fetch_devices()
 
             choose_link(vivado_tx, vivado_rx)
-            independent_finder(vivado_tx, vivado_rx)
+            results_dir = 'runs'
+            independent_finder(vivado_tx, vivado_rx, results_dir=results_dir)
             print('')
             print('All Script has been run.')
+            print('Results stored in "' + results_dir + '" directory.')
             print('Switch to RX vivado console:')
 
         except KeyboardInterrupt:
