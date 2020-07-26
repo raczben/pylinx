@@ -12,6 +12,7 @@ This package based on the following requiremets:
 ## Example
 
 ```python
+PORT = 3121
 win_xsct_executable = r'C:\Xilinx\SDK\2017.4\bin\xsct.bat'
 xsct_server = XsctServer(win_xsct_executable, port=PORT, verbose=False)
 xsct = Xsct('localhost', PORT)
